@@ -3,7 +3,9 @@ import LocationPrompt from './components/LocationPrompt';
 import RestaurantList from './components/RestaurantList';
 import LoadingSpinner from './components/LoadingSpinner';
 
-const API_BASE = '/api';
+// In production the client is on Vercel and the server is on Render — different origins.
+// Set VITE_API_URL on Vercel to your Render service URL (e.g. https://restufinder-api.onrender.com/api)
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 export default function App() {
   const [location, setLocation] = useState(null);
