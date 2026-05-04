@@ -36,19 +36,27 @@ function Skeleton({ lines = 3 }) {
 
 export default function RestaurantModal({ restaurant: r, onClose }) {
   const [tab, setTab] = useState('overview');
-  const [discounts, setDiscounts] = useState(null);   // null=loading, []=loaded
+  const [discounts, setDiscounts] = useState(null);
   const [menuItems, setMenuItems] = useState(null);
-  const [enriched, setEnriched] = useState(null);     // Google Places data if available
+  const [enriched, setEnriched] = useState(null);
 
   const style = getCuisineStyle(r.cuisineTypes || []);
-  const photo = enriched?.photoUrl || r.photoUrl;
-  const rating = enriched?.rating || r.rating;
-  const reviewCount = enriched?.reviewCount || r.reviewCount;
-  const isOpen = enriched?.isOpen ?? null;
-  const openingHours = enriched?.openingHours || null;
-  const openStatus = openingHours
-    ? getOpenStatus(Array.isArray(openingHours) ? null : openingHours)
-    : getOpenStatus(r.openingHours);
+
+  // If restaurant already came from Google Places, use its data directly
+  const isAlreadyRich = r.source === 'google';
+  const photo = r.photoUrl || enriched?.photoUrl;
+  const rating = r.rating || enriched?.rating;
+  const reviewCount = r.reviewCount || enriched?.reviewCount;
+  const website = r.website || enriched?.website;
+  const phone = r.phone || enriched?.phone;
+  const facebookPage = r.facebookPage || enriched?.facebookPage;
+  const instagramPage = r.instagramPage || enriched?.instagramPage;
+
+  const openingHours = r.openingHours || enriched?.openingHours || null;
+  const isOpen = r.isOpen ?? enriched?.isOpen ?? null;
+  const openStatus = Array.isArray(openingHours)
+    ? null  // weekday_text from Google — shown as list, not parsed
+    : getOpenStatus(openingHours);  // OSM string format
 
   // Lock body scroll
   useEffect(() => {
@@ -58,34 +66,37 @@ export default function RestaurantModal({ restaurant: r, onClose }) {
     return () => { document.body.style.overflow = ''; document.removeEventListener('keydown', onKey); };
   }, [onClose]);
 
-  // Load discounts
+  // Load discounts (uses website + facebookPage once resolved)
   useEffect(() => {
+    const resolvedWebsite = website;
+    const resolvedFb = facebookPage;
     const params = new URLSearchParams({ restaurantName: r.name });
-    if (r.website) params.set('website', r.website);
-    if (r.facebookPage) params.set('facebookPage', r.facebookPage);
+    if (resolvedWebsite) params.set('website', resolvedWebsite);
+    if (resolvedFb) params.set('facebookPage', resolvedFb);
     fetch(`${API_BASE}/restaurants/${encodeURIComponent(r.id)}/discounts?${params}`)
       .then((res) => res.json())
       .then((data) => setDiscounts(data.discounts || []))
       .catch(() => setDiscounts([]));
-  }, [r]);
+  }, [r, enriched]);
 
-  // Load menu
+  // Load menu (uses website once resolved)
   useEffect(() => {
-    if (!r.website) { setMenuItems([]); return; }
-    fetch(`${API_BASE}/restaurants/${encodeURIComponent(r.id)}/menu?website=${encodeURIComponent(r.website)}`)
+    const resolvedWebsite = website;
+    if (!resolvedWebsite) { setMenuItems([]); return; }
+    fetch(`${API_BASE}/restaurants/${encodeURIComponent(r.id)}/menu?website=${encodeURIComponent(resolvedWebsite)}`)
       .then((res) => res.json())
       .then((data) => setMenuItems(data.items || []))
       .catch(() => setMenuItems([]));
-  }, [r]);
+  }, [r, enriched]);
 
-  // Try Google Places enrichment (best-effort)
+  // Enrich with Google Places only if data source is OSM (sparse)
   useEffect(() => {
-    if (!r.location) return;
+    if (isAlreadyRich || !r.location) return;
     fetch(`${API_BASE}/restaurants/enrich?name=${encodeURIComponent(r.name)}&lat=${r.location.lat}&lng=${r.location.lng}`)
       .then((res) => res.ok ? res.json() : null)
       .then((data) => { if (data) setEnriched(data); })
       .catch(() => {});
-  }, [r]);
+  }, [r, isAlreadyRich]);
 
   const discountCount = discounts?.length ?? 0;
 
@@ -135,11 +146,14 @@ export default function RestaurantModal({ restaurant: r, onClose }) {
 
         {/* Quick links bar */}
         <div className="flex gap-3 px-4 py-2.5 bg-gray-50 border-b border-gray-100 overflow-x-auto text-sm shrink-0">
-          {r.phone && <a href={`tel:${r.phone}`} className="flex items-center gap-1 text-gray-600 hover:text-orange-600 whitespace-nowrap">📞 {r.phone}</a>}
-          {r.website && <a href={r.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-gray-600 hover:text-blue-600 whitespace-nowrap">🌐 Website</a>}
-          {r.facebookPage && <a href={r.facebookPage.startsWith('http') ? r.facebookPage : `https://${r.facebookPage}`} target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-indigo-600 whitespace-nowrap">👤 Facebook</a>}
-          {r.instagramPage && <a href={r.instagramPage.startsWith('http') ? r.instagramPage : `https://${r.instagramPage}`} target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-pink-600 whitespace-nowrap">📸 Instagram</a>}
+          {phone && <a href={`tel:${phone}`} className="flex items-center gap-1 text-gray-600 hover:text-orange-600 whitespace-nowrap">📞 {phone}</a>}
+          {website && <a href={website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-gray-600 hover:text-blue-600 whitespace-nowrap">🌐 Website</a>}
+          {facebookPage && <a href={facebookPage.startsWith('http') ? facebookPage : `https://${facebookPage}`} target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-indigo-600 whitespace-nowrap">👤 Facebook</a>}
+          {instagramPage && <a href={instagramPage.startsWith('http') ? instagramPage : `https://${instagramPage}`} target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-pink-600 whitespace-nowrap">📸 Instagram</a>}
           {r.address && <span className="text-gray-400 text-xs whitespace-nowrap">📍 {r.address}</span>}
+          {!phone && !website && !facebookPage && !r.address && !isAlreadyRich && (
+            <span className="text-gray-400 text-xs italic">Fetching details…</span>
+          )}
         </div>
 
         {/* Tabs */}
@@ -210,16 +224,20 @@ export default function RestaurantModal({ restaurant: r, onClose }) {
                 </div>
               )}
 
-              {/* About (enriched) */}
-              {enriched === null && (
-                <div>
-                  <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Fetching details…</h4>
-                  <Skeleton />
+              {/* Enrichment loading state for OSM restaurants */}
+              {!isAlreadyRich && enriched === null && (
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700">
+                  🔍 Looking up additional details via Google Places…
+                  <div className="mt-2"><Skeleton lines={2} /></div>
                 </div>
               )}
 
-              {!r.website && !r.phone && !r.openingHours && (
-                <p className="text-sm text-gray-400 text-center py-4">Limited info available — this restaurant has minimal public data.</p>
+              {/* No data state */}
+              {!phone && !website && !openingHours && enriched !== null && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+                  <strong>Limited information available.</strong> This restaurant has minimal public data on OpenStreetMap and wasn't found on Google Places.
+                  {!isAlreadyRich && <span> Adding a <strong>Google Places API key</strong> on Render improves coverage significantly.</span>}
+                </div>
               )}
             </div>
           )}
@@ -232,12 +250,16 @@ export default function RestaurantModal({ restaurant: r, onClose }) {
               {menuItems !== null && menuItems.length === 0 && (
                 <div className="text-center py-10">
                   <p className="text-3xl mb-3">📋</p>
-                  <p className="text-gray-600 font-medium mb-1">Menu not available online</p>
-                  <p className="text-gray-400 text-sm mb-4">We couldn't find a structured menu for this restaurant.</p>
-                  {r.website && (
-                    <a href={r.website} target="_blank" rel="noopener noreferrer"
+                  <p className="text-gray-600 font-medium mb-1">Menu not available</p>
+                  <p className="text-gray-400 text-sm mb-4 max-w-xs mx-auto">
+                    {!website
+                      ? 'No website found for this restaurant. Menu scraping requires a website link, which Google Places can provide.'
+                      : "We couldn't extract a structured menu from their website. The menu may be image-based or in a format we can't read."}
+                  </p>
+                  {website && (
+                    <a href={website} target="_blank" rel="noopener noreferrer"
                        className="inline-block px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 transition-colors">
-                      Visit their website →
+                      View their website →
                     </a>
                   )}
                 </div>
