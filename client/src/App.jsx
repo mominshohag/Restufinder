@@ -97,14 +97,26 @@ function RestuFinderApp() {
     if (location) fetchRestaurants(location, newRadius);
   };
 
+  const handleChangeLocation = useCallback(
+    (coords) => {
+      setLocation(coords);
+      fetchRestaurants(coords, radius);
+    },
+    [fetchRestaurants, radius]
+  );
+
   return (
     <div className="min-h-screen flex flex-col">
       <header className="bg-white border-b border-gray-200 sticky top-0 z-20 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2 shrink-0">
+          <button
+            className="flex items-center gap-2 shrink-0 hover:opacity-80 transition-opacity"
+            onClick={() => { setLocation(null); setRestaurants([]); setError(null); setDataSource(''); }}
+            title="Go to home"
+          >
             <span className="text-2xl">🍽️</span>
             <span className="font-bold text-xl text-gray-900 tracking-tight">RestuFinder</span>
-          </div>
+          </button>
           {location && !loading && (
             <div className="flex items-center gap-2 text-sm flex-wrap justify-end">
               {location.label && (
@@ -165,6 +177,8 @@ function RestuFinderApp() {
               radius={radius}
               onRadiusChange={handleRadiusChange}
               onRefresh={() => fetchRestaurants(location, radius)}
+              onChangeLocation={handleChangeLocation}
+              dataSource={dataSource}
             />
           </>
         )}
@@ -172,7 +186,7 @@ function RestuFinderApp() {
 
       <footer className="text-center text-xs text-gray-400 py-4 border-t border-gray-100">
         RestuFinder · {dataSource === 'google' ? 'Google Places' : 'OpenStreetMap'}
-        <span className="ml-2 text-gray-300">v1.6</span>
+        <span className="ml-2 text-gray-300">v1.8</span>
       </footer>
     </div>
   );

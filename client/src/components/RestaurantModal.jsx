@@ -35,7 +35,7 @@ function Skeleton({ lines = 3 }) {
 }
 
 export default function RestaurantModal({ restaurant: r, onClose }) {
-  const [tab, setTab] = useState('overview');
+  const [tab, setTab] = useState('info');
   const [discounts, setDiscounts] = useState(null);
   const [menuItems, setMenuItems] = useState(null);
   const [enriched, setEnriched] = useState(null);
@@ -159,7 +159,7 @@ export default function RestaurantModal({ restaurant: r, onClose }) {
         {/* Tabs */}
         <div className="flex border-b border-gray-100 shrink-0 bg-white">
           {[
-            { id: 'overview', label: 'Overview' },
+            { id: 'info', label: 'Info' },
             { id: 'menu',     label: menuItems === null ? 'Menu…' : menuItems.length > 0 ? `Menu (${menuItems.length})` : 'Menu' },
             { id: 'deals',    label: discounts === null ? 'Deals…' : discountCount > 0 ? `🏷️ Deals (${discountCount})` : 'Deals' },
           ].map((t) => (
@@ -176,41 +176,52 @@ export default function RestaurantModal({ restaurant: r, onClose }) {
         {/* Tab body */}
         <div className="flex-1 overflow-y-auto">
 
-          {/* ── Overview ── */}
-          {tab === 'overview' && (
+          {/* ── Info ── */}
+          {tab === 'info' && (
             <div className="p-5 space-y-5">
-              {/* Open status */}
-              {openStatus && (
-                <div className={`flex items-center gap-2 text-sm font-medium ${openStatus.isOpen ? 'text-green-700' : 'text-gray-600'}`}>
-                  <span>{openStatus.isOpen ? '🟢' : '🔴'}</span>
-                  <span>{openStatus.label}</span>
+              {/* Open status banner */}
+              {(isOpen !== null || openStatus) && (
+                <div className={`flex items-center gap-2 text-sm font-semibold px-3 py-2 rounded-xl ${(isOpen ?? openStatus?.isOpen) ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-gray-50 text-gray-600 border border-gray-200'}`}>
+                  <span>{(isOpen ?? openStatus?.isOpen) ? '🟢' : '🔴'}</span>
+                  <span>{openStatus?.label || ((isOpen ?? openStatus?.isOpen) ? 'Open now' : 'Closed now')}</span>
                 </div>
               )}
 
-              {/* Opening hours grid from Google Places */}
-              {Array.isArray(openingHours) && openingHours.length > 0 && (
-                <div>
-                  <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Opening Hours</h4>
-                  <div className="space-y-1">
-                    {openingHours.map((h) => (
-                      <div key={h} className="flex justify-between text-sm">
-                        <span className="text-gray-600 font-medium">{h.split(': ')[0]}</span>
-                        <span className="text-gray-500">{h.split(': ').slice(1).join(': ')}</span>
-                      </div>
-                    ))}
+              {/* Key details grid */}
+              <div className="grid grid-cols-1 gap-3">
+                {r.address && (
+                  <div className="flex items-start gap-2 text-sm">
+                    <span className="text-lg shrink-0">📍</span>
+                    <span className="text-gray-700">{r.address}</span>
                   </div>
-                </div>
-              )}
+                )}
+                {phone && (
+                  <a href={`tel:${phone}`} className="flex items-center gap-2 text-sm text-gray-700 hover:text-orange-600">
+                    <span className="text-lg shrink-0">📞</span>
+                    <span>{phone}</span>
+                  </a>
+                )}
+                {website && (
+                  <a href={website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 break-all">
+                    <span className="text-lg shrink-0">🌐</span>
+                    <span className="underline truncate">{website.replace(/^https?:\/\//, '')}</span>
+                  </a>
+                )}
+                {facebookPage && (
+                  <a href={facebookPage.startsWith('http') ? facebookPage : `https://${facebookPage}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-800">
+                    <span className="text-lg shrink-0">👤</span>
+                    <span className="underline">Facebook page</span>
+                  </a>
+                )}
+                {instagramPage && (
+                  <a href={instagramPage.startsWith('http') ? instagramPage : `https://${instagramPage}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-pink-600 hover:text-pink-800">
+                    <span className="text-lg shrink-0">📸</span>
+                    <span className="underline">Instagram</span>
+                  </a>
+                )}
+              </div>
 
-              {/* OSM opening_hours fallback */}
-              {!Array.isArray(openingHours) && r.openingHours && (
-                <div>
-                  <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Opening Hours</h4>
-                  <p className="text-sm text-gray-600">{r.openingHours}</p>
-                </div>
-              )}
-
-              {/* Cuisine */}
+              {/* Cuisine tags */}
               {(r.cuisineTypes || []).length > 0 && (
                 <div>
                   <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Cuisine</h4>
@@ -224,7 +235,34 @@ export default function RestaurantModal({ restaurant: r, onClose }) {
                 </div>
               )}
 
-              {/* Enrichment loading state for OSM restaurants */}
+              {/* Opening hours grid from Google Places */}
+              {Array.isArray(openingHours) && openingHours.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Opening Hours</h4>
+                  <div className="space-y-1 bg-gray-50 rounded-xl p-3">
+                    {openingHours.map((h) => {
+                      const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+                      const isToday = h.startsWith(today);
+                      return (
+                        <div key={h} className={`flex justify-between text-sm ${isToday ? 'font-semibold text-gray-900' : ''}`}>
+                          <span className="text-gray-600">{h.split(': ')[0]}</span>
+                          <span className={isToday ? 'text-orange-600' : 'text-gray-500'}>{h.split(': ').slice(1).join(': ')}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* OSM opening_hours fallback */}
+              {!Array.isArray(openingHours) && openingHours && (
+                <div>
+                  <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Opening Hours</h4>
+                  <p className="text-sm text-gray-600 bg-gray-50 rounded-xl p-3">{openingHours}</p>
+                </div>
+              )}
+
+              {/* Enrichment loading state */}
               {!isAlreadyRich && enriched === null && (
                 <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700">
                   🔍 Looking up additional details via Google Places…
@@ -233,7 +271,7 @@ export default function RestaurantModal({ restaurant: r, onClose }) {
               )}
 
               {/* No data state */}
-              {!phone && !website && !openingHours && enriched !== null && (
+              {!phone && !website && !openingHours && !r.address && enriched !== null && (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
                   <strong>Limited information available.</strong> This restaurant has minimal public data on OpenStreetMap and wasn't found on Google Places.
                   {!isAlreadyRich && <span> Adding a <strong>Google Places API key</strong> on Render improves coverage significantly.</span>}
@@ -314,27 +352,42 @@ export default function RestaurantModal({ restaurant: r, onClose }) {
               )}
 
               {discounts !== null && discounts.length > 0 && (
-                <div className="space-y-3">
+                <div className="space-y-4">
+                  <p className="text-xs text-gray-400">Found {discounts.length} active deal{discounts.length !== 1 ? 's' : ''}</p>
                   {discounts.map((d, i) => {
                     const meta = SOURCE_META[d.source] || SOURCE_META.website;
                     return (
-                      <div key={i} className="border border-gray-100 rounded-xl p-4 hover:border-orange-200 hover:bg-orange-50/30 transition-colors">
-                        <div className="flex items-center gap-2 mb-2 flex-wrap">
-                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${meta.color}`}>
-                            {meta.icon} {meta.label}
-                          </span>
-                          {d.confidence === 'high' && (
-                            <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">confirmed</span>
-                          )}
-                          {d.postedAt && (
-                            <span className="text-xs text-gray-400 ml-auto">
-                              {new Date(d.postedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      <div key={i} className="border border-orange-100 rounded-2xl overflow-hidden bg-white shadow-sm hover:shadow-md transition-shadow">
+                        {/* Full-width deal image */}
+                        {d.imageUrl && (
+                          <a href={d.url || '#'} target="_blank" rel="noopener noreferrer">
+                            <img src={d.imageUrl} alt="Deal offer" className="w-full object-cover max-h-64" loading="lazy" />
+                          </a>
+                        )}
+                        <div className="p-4">
+                          {/* Source + date row */}
+                          <div className="flex items-center gap-2 mb-2 flex-wrap">
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${meta.color}`}>
+                              {meta.icon} {meta.label}
                             </span>
+                            {d.confidence === 'high' && (
+                              <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">✓ Verified</span>
+                            )}
+                            {d.postedAt && (
+                              <span className="text-xs text-gray-400 ml-auto">
+                                {new Date(d.postedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                              </span>
+                            )}
+                          </div>
+                          {/* Deal text */}
+                          <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-line">{d.description}</p>
+                          {d.url && (
+                            <a href={d.url} target="_blank" rel="noopener noreferrer"
+                               className="mt-3 inline-flex items-center gap-1 text-sm text-orange-600 font-medium hover:text-orange-800">
+                              View full post →
+                            </a>
                           )}
                         </div>
-                        {d.imageUrl && <img src={d.imageUrl} alt="Deal" className="w-full h-32 object-cover rounded-lg mb-2" loading="lazy" />}
-                        <p className="text-sm text-gray-700 line-clamp-3">{d.description}</p>
-                        {d.url && <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-xs text-orange-500 hover:text-orange-700 mt-2 inline-block underline">View source →</a>}
                       </div>
                     );
                   })}
