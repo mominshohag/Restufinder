@@ -2,66 +2,83 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 
 const HTTP_OPTS = {
-  timeout: 7000,
+  timeout: 8000,
   headers: {
     'User-Agent':
-      'Mozilla/5.0 (compatible; RestuFinder/1.0; +https://github.com/mominshohag/restufinder)',
-    Accept: 'text/html,application/xhtml+xml',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+      '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    Accept: 'text/html,application/xhtml+xml,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
   },
   maxRedirects: 5,
 };
 
-const DISCOUNT_KEYWORDS = [
+const DEAL_KEYWORDS = [
   'discount', 'offer', 'deal', 'special', 'promo', 'promotion',
   'coupon', 'happy hour', 'sale', '% off', 'percent off',
   'buy one get one', 'bogo', '2 for 1', 'two for one',
   'free', 'complimentary', 'save', 'reduced', 'half price',
   'limited time', 'today only', 'weekend special', 'lunch deal',
+  'combo', 'meal deal', 'value meal', 'set meal', 'family deal',
+  'student', 'cashback', 'flat', 'voucher', 'code', 'redeem',
+  'tk off', '৳', 'taka', 'eid', 'ramadan', 'iftar', 'exclusive',
+  'flash sale', 'grab', 'hurry', 'monday offer', 'tuesday offer',
 ];
 
-const DISCOUNT_SELECTORS = [
+const DEAL_SELECTORS = [
   '[class*="promo"]', '[class*="discount"]', '[class*="offer"]',
   '[class*="deal"]', '[class*="special"]', '[class*="coupon"]',
+  '[class*="banner"]', '[class*="campaign"]', '[class*="flash"]',
   '[id*="promo"]', '[id*="discount"]', '[id*="offer"]',
-  '[id*="deal"]', '[id*="special"]',
+  '[id*="deal"]', '[id*="special"]', '[id*="banner"]',
 ];
 
-const DISCOUNT_PATHS = [
+const DEAL_PATHS = [
   '/deals', '/offers', '/specials', '/promotions', '/discounts',
-  '/happy-hour', '/specials', '/coupons', '/menu-specials',
+  '/happy-hour', '/coupons', '/menu-specials', '/combo', '/packages',
 ];
 
 async function findDiscountsOnWebsite(websiteUrl) {
-  const allDiscounts = [];
+  const allDeals = [];
   const seen = new Set();
 
   // Scrape main page
   try {
-    const main = await scrapePage(websiteUrl);
-    main.forEach((d) => allDiscounts.push({ ...d, url: websiteUrl }));
+    const { deals, ogImage } = await scrapePage(websiteUrl, websiteUrl);
+    deals.forEach((d) => {
+      const item = { ...d, url: websiteUrl };
+      if (!item.imageUrl && ogImage) item.imageUrl = ogImage;
+      allDeals.push(item);
+    });
   } catch {
-    // Site unreachable
+    // Site unreachable — skip silently
   }
 
-  // Scrape common discount sub-pages
+  // Scrape common deal sub-pages in parallel
   let base;
-  try {
-    base = new URL(websiteUrl).origin;
-  } catch {
-    return allDiscounts;
-  }
+  try { base = new URL(websiteUrl).origin; } catch { return dedup(allDeals, seen); }
 
   const subResults = await Promise.allSettled(
-    DISCOUNT_PATHS.map((path) =>
-      scrapePage(base + path).then((ds) => ds.map((d) => ({ ...d, url: base + path })))
+    DEAL_PATHS.map((path) =>
+      scrapePage(base + path, base + path).then(({ deals, ogImage }) =>
+        deals.map((d) => {
+          const item = { ...d, url: base + path };
+          if (!item.imageUrl && ogImage) item.imageUrl = ogImage;
+          return item;
+        })
+      )
     )
   );
+
   subResults
     .filter((r) => r.status === 'fulfilled')
-    .forEach((r) => allDiscounts.push(...r.value));
+    .forEach((r) => allDeals.push(...r.value));
 
-  // Deduplicate by first 60 chars of description
-  return allDiscounts.filter((d) => {
+  return dedup(allDeals, seen);
+}
+
+function dedup(deals, seen) {
+  return deals.filter((d) => {
     const key = d.description.substring(0, 60).toLowerCase();
     if (seen.has(key)) return false;
     seen.add(key);
@@ -69,33 +86,79 @@ async function findDiscountsOnWebsite(websiteUrl) {
   });
 }
 
-async function scrapePage(url) {
+async function scrapePage(url, pageUrl) {
   const { data } = await axios.get(url, HTTP_OPTS);
   const $ = cheerio.load(data);
   const found = [];
 
-  // High-confidence: elements with promo/discount-related classes or IDs
-  DISCOUNT_SELECTORS.forEach((sel) => {
+  // Extract OG image for the page (used as fallback for deals without their own image)
+  const ogImage =
+    $('meta[property="og:image"]').attr('content') ||
+    $('meta[name="twitter:image"]').attr('content') ||
+    null;
+
+  // High-confidence: elements with promo/deal classes or IDs
+  DEAL_SELECTORS.forEach((sel) => {
     $(sel).each((_, el) => {
       const text = $(el).text().replace(/\s+/g, ' ').trim();
-      if (text.length >= 15 && text.length <= 500) {
-        found.push({ description: text, confidence: 'high' });
-      }
+      if (text.length < 15 || text.length > 600) return;
+      const imageUrl = findNearbyImage($, el, pageUrl);
+      found.push({ description: text, imageUrl, confidence: 'high', source: 'website' });
     });
   });
 
-  // Medium-confidence: text nodes containing discount keywords
-  $('p, li, h2, h3, h4, span').each((_, el) => {
-    if ($(el).children('p, div, ul, ol').length > 0) return; // skip non-leaf containers
+  // Medium-confidence: any element with deal keywords
+  $('p, li, h2, h3, h4, span, div').each((_, el) => {
+    if ($(el).children('p, div, ul, ol, section').length > 0) return; // non-leaf
     const text = $(el).text().replace(/\s+/g, ' ').trim();
-    if (text.length < 15 || text.length > 400) return;
+    if (text.length < 15 || text.length > 500) return;
     const lower = text.toLowerCase();
-    if (DISCOUNT_KEYWORDS.some((kw) => lower.includes(kw))) {
-      found.push({ description: text, confidence: 'medium' });
-    }
+    if (!DEAL_KEYWORDS.some((kw) => lower.includes(kw))) return;
+    const imageUrl = findNearbyImage($, el, pageUrl);
+    found.push({ description: text, imageUrl, confidence: 'medium', source: 'website' });
   });
 
-  return found.slice(0, 6);
+  // Deduplicate within this page before returning
+  const seen = new Set();
+  const unique = found.filter((d) => {
+    const key = d.description.substring(0, 50).toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return { deals: unique.slice(0, 8), ogImage };
+}
+
+// Walk up to 3 ancestor levels looking for an <img> or background-image
+function findNearbyImage($, el, pageUrl) {
+  let node = $(el);
+  for (let i = 0; i < 3; i++) {
+    // Check direct img descendants
+    const img = node.find('img').first();
+    if (img.length) {
+      const src = img.attr('src') || img.attr('data-src') || img.attr('data-lazy-src');
+      if (src) return resolveUrl(src, pageUrl);
+    }
+    // Check sibling img
+    const sibImg = node.siblings('img').first();
+    if (sibImg.length) {
+      const src = sibImg.attr('src') || sibImg.attr('data-src');
+      if (src) return resolveUrl(src, pageUrl);
+    }
+    node = node.parent();
+  }
+  return null;
+}
+
+function resolveUrl(src, pageUrl) {
+  if (!src || src.startsWith('data:')) return null;
+  if (src.startsWith('http')) return src;
+  try {
+    return new URL(src, pageUrl).href;
+  } catch {
+    return null;
+  }
 }
 
 async function extractSocialMediaLinks(websiteUrl) {
@@ -103,13 +166,11 @@ async function extractSocialMediaLinks(websiteUrl) {
     const { data } = await axios.get(websiteUrl, HTTP_OPTS);
     const $ = cheerio.load(data);
     const links = {};
-
     $('a[href]').each((_, el) => {
       const href = $(el).attr('href') || '';
       if (!links.facebookPage && href.includes('facebook.com')) links.facebookPage = href;
       if (!links.instagramPage && href.includes('instagram.com')) links.instagramPage = href;
     });
-
     return links;
   } catch {
     return {};

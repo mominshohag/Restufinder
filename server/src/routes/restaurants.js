@@ -63,7 +63,8 @@ router.get('/restaurants/:id/discounts', async (req, res) => {
   const { id } = req.params;
   const { website, facebookPage, restaurantName } = req.query;
 
-  const cacheKey = `discounts_${id}`;
+  // Include website/fb in cache key so enriched calls get their own entry
+  const cacheKey = `discounts_${id}_${website || ''}_${facebookPage || ''}`;
   const cached = discountCache.get(cacheKey);
   if (cached) return res.json({ discounts: cached });
 

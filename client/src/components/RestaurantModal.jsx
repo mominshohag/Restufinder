@@ -66,28 +66,36 @@ export default function RestaurantModal({ restaurant: r, onClose }) {
     return () => { document.body.style.overflow = ''; document.removeEventListener('keydown', onKey); };
   }, [onClose]);
 
-  // Load discounts (uses website + facebookPage once resolved)
+  // Load discounts — wait for enrichment to finish for OSM restaurants so we
+  // have the website/facebookPage before calling, giving better results.
   useEffect(() => {
-    const resolvedWebsite = website;
-    const resolvedFb = facebookPage;
+    // For OSM restaurants, wait until enrichment resolves (null = still loading)
+    if (!isAlreadyRich && enriched === null) return;
+
     const params = new URLSearchParams({ restaurantName: r.name });
-    if (resolvedWebsite) params.set('website', resolvedWebsite);
-    if (resolvedFb) params.set('facebookPage', resolvedFb);
+    if (website) params.set('website', website);
+    if (facebookPage) params.set('facebookPage', facebookPage);
+
+    let cancelled = false;
     fetch(`${API_BASE}/restaurants/${encodeURIComponent(r.id)}/discounts?${params}`)
       .then((res) => res.json())
-      .then((data) => setDiscounts(data.discounts || []))
-      .catch(() => setDiscounts([]));
-  }, [r, enriched]);
+      .then((data) => { if (!cancelled) setDiscounts(data.discounts || []); })
+      .catch(() => { if (!cancelled) setDiscounts([]); });
+    return () => { cancelled = true; };
+  }, [r.id, r.name, isAlreadyRich, enriched, website, facebookPage]);
 
-  // Load menu (uses website once resolved)
+  // Load menu — also wait for enrichment for OSM restaurants
   useEffect(() => {
-    const resolvedWebsite = website;
-    if (!resolvedWebsite) { setMenuItems([]); return; }
-    fetch(`${API_BASE}/restaurants/${encodeURIComponent(r.id)}/menu?website=${encodeURIComponent(resolvedWebsite)}`)
+    if (!isAlreadyRich && enriched === null) return;
+    if (!website) { setMenuItems([]); return; }
+
+    let cancelled = false;
+    fetch(`${API_BASE}/restaurants/${encodeURIComponent(r.id)}/menu?website=${encodeURIComponent(website)}`)
       .then((res) => res.json())
-      .then((data) => setMenuItems(data.items || []))
-      .catch(() => setMenuItems([]));
-  }, [r, enriched]);
+      .then((data) => { if (!cancelled) setMenuItems(data.items || []); })
+      .catch(() => { if (!cancelled) setMenuItems([]); });
+    return () => { cancelled = true; };
+  }, [r.id, isAlreadyRich, enriched, website]);
 
   // Enrich with Google Places only if data source is OSM (sparse)
   useEffect(() => {
