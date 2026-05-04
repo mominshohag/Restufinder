@@ -4,17 +4,20 @@
 
 const MIRRORS = [
   'https://overpass-api.de/api/interpreter',
-  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.openstreetmap.ru/api/interpreter',
 ];
 
 const PRICE_MAP = { '$': 1, '$$': 2, '$$$': 3, '$$$$': 4 };
 
 export async function getNearbyRestaurants(lat, lng, radius = 2000) {
   const query = `
-    [out:json][timeout:30];
+    [out:json][timeout:25];
     (
-      node["amenity"~"^(restaurant|cafe|fast_food|bar|pub|food_court|bistro)$"](around:${radius},${lat},${lng});
-      way["amenity"~"^(restaurant|cafe|fast_food|bar|pub|food_court|bistro)$"](around:${radius},${lat},${lng});
+      node["amenity"="restaurant"](around:${radius},${lat},${lng});
+      node["amenity"="cafe"](around:${radius},${lat},${lng});
+      node["amenity"="fast_food"](around:${radius},${lat},${lng});
+      way["amenity"="restaurant"](around:${radius},${lat},${lng});
     );
     out body;
     >;
