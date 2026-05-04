@@ -2,7 +2,7 @@
 const DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
 export function getOpenStatus(str) {
-  if (!str) return null;
+  if (!str || typeof str !== 'string') return null;  // guard against arrays / null
   const s = str.trim();
   if (s === '24/7') return { isOpen: true, label: 'Open 24/7' };
 

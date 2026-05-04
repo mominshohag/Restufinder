@@ -35,7 +35,11 @@ export default function RestaurantCard({ restaurant: r, userLocation, index = 0 
   const [discountStatus, setDiscountStatus] = useState(null); // null | 'checking' | 'found' | 'none'
 
   const style = getCuisineStyle(r.cuisineTypes || []);
-  const openStatus = getOpenStatus(r.openingHours);
+  // Google Places returns openingHours as a string[] (weekday_text) — use isOpen directly.
+  // OSM returns a plain string like "Mo-Fr 09:00-22:00" — parse it.
+  const openStatus = Array.isArray(r.openingHours)
+    ? (r.isOpen != null ? { isOpen: r.isOpen, label: r.isOpen ? 'Open now' : 'Closed now' } : null)
+    : getOpenStatus(r.openingHours);
   const dist = haversine(userLocation, r.location);
   const distText = dist == null ? null : dist < 1000 ? `${Math.round(dist)}m` : `${(dist / 1000).toFixed(1)}km`;
 
