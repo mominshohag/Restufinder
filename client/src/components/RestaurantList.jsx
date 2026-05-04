@@ -146,8 +146,8 @@ export default function RestaurantList({ restaurants, location, radius, onRadius
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filtered.map((r) => (
-            <RestaurantCard key={r.id} restaurant={r} userLocation={location} />
+          {filtered.map((r, i) => (
+            <RestaurantCard key={r.id} restaurant={r} userLocation={location} index={i} />
           ))}
         </div>
       )}

@@ -107,7 +107,7 @@ export default function App() {
 
       <footer className="text-center text-xs text-gray-400 py-4 border-t border-gray-100">
         RestuFinder — restaurant data via OpenStreetMap · discounts scraped from public sources
-        <span className="ml-2 text-gray-300">v1.2</span>
+        <span className="ml-2 text-gray-300">v1.3</span>
       </footer>
     </div>
   );

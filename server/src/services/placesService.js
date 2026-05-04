@@ -86,4 +86,25 @@ async function getPlaceDetails(placeId) {
   };
 }
 
-module.exports = { getNearbyRestaurants };
+// Enrich a single OSM restaurant with Google Places data (photo, rating, hours)
+async function enrichRestaurant(name, lat, lng) {
+  if (!API_KEY) return null;
+
+  try {
+    const { data } = await axios.get(`${PLACES_BASE}/findplacefromtext/json`, {
+      params: {
+        input: name,
+        inputtype: 'textquery',
+        locationbias: `circle:500@${lat},${lng}`,
+        fields: 'place_id,name',
+        key: API_KEY,
+      },
+    });
+    if (!data.candidates?.length) return null;
+    return await getPlaceDetails(data.candidates[0].place_id);
+  } catch {
+    return null;
+  }
+}
+
+module.exports = { getNearbyRestaurants, enrichRestaurant };
