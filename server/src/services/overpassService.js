@@ -14,10 +14,27 @@ async function getNearbyRestaurants(lat, lng, radius = 2000) {
     out skel qt;
   `;
 
-  const { data } = await axios.post(OVERPASS_URL, query, {
-    headers: { 'Content-Type': 'text/plain' },
-    timeout: 35000,
-  });
+  // Try two different Overpass API mirrors for resilience
+  const MIRRORS = [
+    'https://overpass-api.de/api/interpreter',
+    'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  ];
+
+  let data;
+  let lastError;
+  for (const url of MIRRORS) {
+    try {
+      const res = await axios.post(url, query, {
+        headers: { 'Content-Type': 'text/plain' },
+        timeout: 45000,
+      });
+      data = res.data;
+      break;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  if (!data) throw lastError;
 
   const elements = (data.elements || []).filter((el) => el.tags?.name);
 

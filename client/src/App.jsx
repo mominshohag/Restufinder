@@ -65,6 +65,11 @@ export default function App() {
 
           {location && !loading && (
             <div className="flex items-center gap-3 text-sm text-gray-500">
+              {location.label && (
+                <span className="text-gray-700 font-medium text-sm hidden sm:inline">
+                  📍 {location.label}
+                </span>
+              )}
               {dataSource === 'openstreetmap' && (
                 <span className="hidden sm:inline bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full border border-blue-200">
                   OpenStreetMap
@@ -102,8 +107,11 @@ export default function App() {
         ) : error ? (
           <div className="text-center py-20">
             <p className="text-4xl mb-4">😕</p>
-            <p className="text-red-600 text-lg font-medium mb-2">Something went wrong</p>
-            <p className="text-gray-500 mb-6">{error}</p>
+            <p className="text-red-600 text-lg font-medium mb-2">Could not fetch restaurants</p>
+            <p className="text-gray-500 mb-2">{error}</p>
+            <p className="text-gray-400 text-sm mb-6">
+              The server may be waking up — this can take up to 30 seconds on the free plan. Please retry.
+            </p>
             <button
               onClick={() => fetchRestaurants(location, radius)}
               className="px-5 py-2.5 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors font-medium"
