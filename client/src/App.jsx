@@ -1,64 +1,87 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef, Component } from 'react';
 import LocationPrompt from './components/LocationPrompt';
 import RestaurantList from './components/RestaurantList';
 import LoadingSpinner from './components/LoadingSpinner';
 import { getNearbyRestaurants } from './services/overpassService.js';
 import { API_BASE } from './config.js';
 
-export default function App() {
+// Catches any render crash and shows a readable message instead of blank screen
+class ErrorBoundary extends Component {
+  state = { error: null };
+  static getDerivedStateFromError(e) { return { error: e }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="min-h-screen flex items-center justify-center p-8 text-center">
+          <div>
+            <p className="text-4xl mb-4">⚠️</p>
+            <p className="text-red-600 font-semibold text-lg mb-2">Something crashed</p>
+            <p className="text-gray-500 text-sm mb-4">{this.state.error.message}</p>
+            <button onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600">
+              Reload page
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function RestuFinderApp() {
   const [location, setLocation] = useState(null);
   const [restaurants, setRestaurants] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [radius, setRadius] = useState(2000);
-  const [backendConfig, setBackendConfig] = useState(null); // { hasGooglePlaces, hasFacebook }
   const [dataSource, setDataSource] = useState('');
 
-  // Check what the backend supports — 8s timeout so a sleeping Render server doesn't freeze the UI
+  // Use a ref so fetchRestaurants always reads the latest config without needing it as a dep
+  const configRef = useRef({ hasGooglePlaces: false, hasFacebook: false });
+
+  // Fetch config in background — UI shows immediately without waiting
   useEffect(() => {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
+    const timer = setTimeout(() => controller.abort(), 10000);
     fetch(`${API_BASE}/config`, { signal: controller.signal })
       .then((r) => r.json())
-      .then((cfg) => setBackendConfig(cfg))
-      .catch(() => setBackendConfig({ hasGooglePlaces: false, hasFacebook: false }))
+      .then((cfg) => { configRef.current = cfg; })
+      .catch(() => {})
       .finally(() => clearTimeout(timer));
   }, []);
 
   const fetchRestaurants = useCallback(
-    async (coords, searchRadius = radius) => {
+    async (coords, searchRadius) => {
       setLoading(true);
       setError(null);
+      setRestaurants([]);
 
       try {
-        let results;
+        const cfg = configRef.current;
+        let results = [];
 
-        if (backendConfig?.hasGooglePlaces) {
-          // Use backend → Google Places (rich data: photos, ratings, hours, website)
+        if (cfg.hasGooglePlaces) {
           const res = await fetch(
             `${API_BASE}/restaurants?lat=${coords.lat}&lng=${coords.lng}&radius=${searchRadius}`
           );
-          if (!res.ok) {
-            const body = await res.json().catch(() => ({}));
-            throw new Error(body.error || `Server error ${res.status}`);
-          }
-          const data = await res.json();
-          results = data.restaurants || [];
+          const body = await res.json();
+          if (!res.ok) throw new Error(body.error || `Server error ${res.status}`);
+          results = body.restaurants || [];
           setDataSource('google');
         } else {
-          // Fall back to Overpass directly from browser (no API key needed)
           results = await getNearbyRestaurants(coords.lat, coords.lng, searchRadius);
           setDataSource('openstreetmap');
         }
 
         setRestaurants(results);
       } catch (err) {
-        setError(err.message);
+        setError(err.message || 'Failed to load restaurants. Please retry.');
       } finally {
         setLoading(false);
       }
     },
-    [radius, backendConfig]
+    [radius]
   );
 
   const handleLocationGranted = useCallback(
@@ -76,14 +99,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-20 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2 shrink-0">
             <span className="text-2xl">🍽️</span>
             <span className="font-bold text-xl text-gray-900 tracking-tight">RestuFinder</span>
           </div>
-
           {location && !loading && (
             <div className="flex items-center gap-2 text-sm flex-wrap justify-end">
               {location.label && (
@@ -100,7 +121,7 @@ export default function App() {
                 </span>
               )}
               <button
-                onClick={() => { setLocation(null); setRestaurants([]); setError(null); }}
+                onClick={() => { setLocation(null); setRestaurants([]); setError(null); setDataSource(''); }}
                 className="text-xs text-orange-500 hover:text-orange-700 underline"
               >
                 Change
@@ -110,11 +131,8 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main */}
       <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-6">
-        {backendConfig === null ? (
-          <LoadingSpinner message="Connecting…" />
-        ) : !location ? (
+        {!location ? (
           <LocationPrompt onLocationGranted={handleLocationGranted} />
         ) : loading ? (
           <LoadingSpinner message="Finding restaurants near you…" />
@@ -122,10 +140,13 @@ export default function App() {
           <div className="text-center py-20">
             <p className="text-4xl mb-4">😕</p>
             <p className="text-red-600 text-lg font-medium mb-2">Could not load restaurants</p>
-            <p className="text-gray-500 mb-6">{error}</p>
+            <p className="text-gray-500 mb-2 text-sm">{error}</p>
+            <p className="text-gray-400 text-xs mb-6">
+              If the server is waking up this can take 30 s — please retry.
+            </p>
             <button
               onClick={() => fetchRestaurants(location, radius)}
-              className="px-5 py-2.5 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors font-medium"
+              className="px-5 py-2.5 bg-orange-500 text-white rounded-lg hover:bg-orange-600 font-medium"
             >
               Retry
             </button>
@@ -134,8 +155,8 @@ export default function App() {
           <>
             {dataSource === 'openstreetmap' && (
               <div className="mb-5 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
-                <strong>Limited data mode</strong> — Using free OpenStreetMap which has sparse data for Bangladesh (names only, no photos/hours/ratings).
-                {' '}<strong>Add a Google Places API key</strong> on Render to unlock full restaurant details, photos, ratings, opening hours, and enable discount + menu detection.
+                <strong>Limited data mode</strong> — OpenStreetMap has sparse data for Bangladesh (names only).
+                Add a <strong>Google Places API key</strong> on Render to unlock photos, ratings, hours, menus and discounts.
               </div>
             )}
             <RestaurantList
@@ -144,17 +165,23 @@ export default function App() {
               radius={radius}
               onRadiusChange={handleRadiusChange}
               onRefresh={() => fetchRestaurants(location, radius)}
-              dataSource={dataSource}
-              backendConfig={backendConfig}
             />
           </>
         )}
       </main>
 
       <footer className="text-center text-xs text-gray-400 py-4 border-t border-gray-100">
-        RestuFinder · data via {dataSource === 'google' ? 'Google Places' : 'OpenStreetMap'}
-        <span className="ml-2 text-gray-300">v1.5</span>
+        RestuFinder · {dataSource === 'google' ? 'Google Places' : 'OpenStreetMap'}
+        <span className="ml-2 text-gray-300">v1.6</span>
       </footer>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <RestuFinderApp />
+    </ErrorBoundary>
   );
 }
