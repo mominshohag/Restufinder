@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { getCuisineStyle } from '../services/cuisineStyle.js';
 import { getOpenStatus } from '../services/openingHoursParser.js';
 import RestaurantModal from './RestaurantModal.jsx';
-import { API_BASE } from '../App.jsx';
+import { API_BASE } from '../config.js';
 
 const PRICE = { 1: '$', 2: '$$', 3: '$$$', 4: '$$$$' };
 

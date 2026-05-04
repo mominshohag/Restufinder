@@ -3,10 +3,7 @@ import LocationPrompt from './components/LocationPrompt';
 import RestaurantList from './components/RestaurantList';
 import LoadingSpinner from './components/LoadingSpinner';
 import { getNearbyRestaurants } from './services/overpassService.js';
-
-// Backend is used for: Google Places restaurants (if key set), discounts, menu scraping.
-// VITE_API_URL must be set on Vercel to your Render URL e.g. https://restufinder.onrender.com/api
-export const API_BASE = import.meta.env.VITE_API_URL || '/api';
+import { API_BASE } from './config.js';
 
 export default function App() {
   const [location, setLocation] = useState(null);
@@ -17,12 +14,15 @@ export default function App() {
   const [backendConfig, setBackendConfig] = useState(null); // { hasGooglePlaces, hasFacebook }
   const [dataSource, setDataSource] = useState('');
 
-  // Check what the backend supports on first load
+  // Check what the backend supports — 8s timeout so a sleeping Render server doesn't freeze the UI
   useEffect(() => {
-    fetch(`${API_BASE}/config`)
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    fetch(`${API_BASE}/config`, { signal: controller.signal })
       .then((r) => r.json())
       .then((cfg) => setBackendConfig(cfg))
-      .catch(() => setBackendConfig({ hasGooglePlaces: false, hasFacebook: false }));
+      .catch(() => setBackendConfig({ hasGooglePlaces: false, hasFacebook: false }))
+      .finally(() => clearTimeout(timer));
   }, []);
 
   const fetchRestaurants = useCallback(
@@ -153,7 +153,7 @@ export default function App() {
 
       <footer className="text-center text-xs text-gray-400 py-4 border-t border-gray-100">
         RestuFinder · data via {dataSource === 'google' ? 'Google Places' : 'OpenStreetMap'}
-        <span className="ml-2 text-gray-300">v1.4</span>
+        <span className="ml-2 text-gray-300">v1.5</span>
       </footer>
     </div>
   );
