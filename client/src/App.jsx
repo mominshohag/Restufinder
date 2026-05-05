@@ -186,7 +186,7 @@ function RestuFinderApp() {
 
       <footer className="text-center text-xs text-gray-400 py-4 border-t border-gray-100">
         RestuFinder · {dataSource === 'google' ? 'Google Places' : 'OpenStreetMap'}
-        <span className="ml-2 text-gray-300">v1.9</span>
+        <span className="ml-2 text-gray-300">v2.0</span>
       </footer>
     </div>
   );

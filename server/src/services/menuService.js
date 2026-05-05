@@ -1,16 +1,21 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 
+const API_KEY = process.env.GOOGLE_PLACES_API_KEY;
+const PLACES_BASE = 'https://maps.googleapis.com/maps/api/place';
+
 const HTTP = {
   timeout: 8000,
   headers: {
-    'User-Agent': 'Mozilla/5.0 (compatible; RestuFinder/1.0)',
-    Accept: 'text/html,application/xhtml+xml',
+    'User-Agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+      '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    Accept: 'text/html,application/xhtml+xml,*/*;q=0.8',
   },
   maxRedirects: 4,
 };
 
-// Price patterns: $12.99  ৳250  BDT 300  Tk.150  120/-
+// Price patterns for text-based menu scraping
 const PRICE_RE = /(?:৳|BDT|Tk\.?|Rs\.?|\$|€|£)\s*\d+(?:[.,]\d+)?|\d+\s*(?:\/\-|BDT|Tk)/i;
 const MENU_SELECTORS = [
   '[class*="menu-item"]', '[class*="menu__item"]', '[class*="dish"]',
@@ -18,30 +23,58 @@ const MENU_SELECTORS = [
   '[data-item-name]', '[class*="menu-card"]',
 ];
 
+// ── Google Places photo gallery ──────────────────────────────────────────────
+
+async function getPhotosFromPlaces(placeId) {
+  if (!API_KEY || !placeId) return [];
+
+  try {
+    const { data } = await axios.get(`${PLACES_BASE}/details/json`, {
+      params: {
+        place_id: placeId,
+        fields: 'photos',
+        key: API_KEY,
+      },
+      timeout: 8000,
+    });
+
+    if (data.status !== 'OK' || !data.result?.photos?.length) return [];
+
+    return data.result.photos.slice(0, 15).map((ph, i) => ({
+      name: `Photo ${i + 1}`,
+      description: null,
+      price: null,
+      category: 'Google Photos',
+      image: `${PLACES_BASE}/photo?maxwidth=800&photoreference=${ph.photo_reference}&key=${API_KEY}`,
+      isPhoto: true,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// ── Website menu scraping (fallback when no Google Places key) ───────────────
+
 async function scrapeMenu(websiteUrl) {
   if (!websiteUrl) return [];
 
   const results = [];
 
-  // 1. Try to find JSON-LD structured data
   try {
     const { data: html } = await axios.get(websiteUrl, HTTP);
     const $ = cheerio.load(html);
+
     const jsonld = extractJsonLd($);
     if (jsonld.length > 0) return jsonld;
 
-    // 2. Try CSS selector approach
     const selectorItems = extractBySelectors($, websiteUrl);
     if (selectorItems.length > 0) return selectorItems;
 
-    // 3. Try scanning for price patterns near text
-    const priceItems = extractByPricePattern($);
-    results.push(...priceItems);
+    results.push(...extractByPricePattern($));
   } catch {
     // site unreachable
   }
 
-  // 4. Try common menu sub-pages
   if (results.length === 0) {
     const base = (() => { try { return new URL(websiteUrl).origin; } catch { return null; } })();
     if (base) {
@@ -67,14 +100,12 @@ function extractJsonLd($) {
       const data = JSON.parse(raw);
       const entries = Array.isArray(data) ? data : [data];
       for (const entry of entries) {
-        // Restaurant or FoodEstablishment with hasMenu
         if (entry.hasMenu && typeof entry.hasMenu === 'object') {
           extractMenuFromSchema(entry.hasMenu, items);
         }
         if (entry['@type'] === 'Menu') {
           extractMenuFromSchema(entry, items);
         }
-        // ItemList of food items
         if (entry['@type'] === 'ItemList' && entry.itemListElement) {
           for (const item of entry.itemListElement) {
             if (item.name) {
@@ -147,4 +178,4 @@ function extractByPricePattern($) {
   return items;
 }
 
-module.exports = { scrapeMenu };
+module.exports = { scrapeMenu, getPhotosFromPlaces };

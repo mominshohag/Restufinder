@@ -82,22 +82,33 @@ router.get('/restaurants/:id/discounts', async (req, res) => {
   }
 });
 
-// Menu scraping
+// Menu — tries Google Places photos first, falls back to website scraping
 router.get('/restaurants/:id/menu', async (req, res) => {
   const { id } = req.params;
-  const { website } = req.query;
+  const { website, placeId } = req.query;
 
-  const cacheKey = `menu_${id}`;
+  const cacheKey = `menu_${placeId || id}`;
   const cached = menuCache.get(cacheKey);
   if (cached) return res.json({ items: cached });
 
   try {
-    const items = await menuService.scrapeMenu(website || null);
+    let items = [];
+
+    // 1. Google Places photos (best source — real menu/food photos)
+    if (placeId) {
+      items = await menuService.getPhotosFromPlaces(placeId);
+    }
+
+    // 2. Fall back to website scraping if no photos found
+    if (items.length === 0 && website) {
+      items = await menuService.scrapeMenu(website);
+    }
+
     menuCache.set(cacheKey, items);
     res.json({ items });
   } catch (err) {
-    console.error('Menu scrape error:', err.message);
-    res.status(500).json({ error: 'Could not scrape menu.' });
+    console.error('Menu error:', err.message);
+    res.status(500).json({ error: 'Could not load menu.' });
   }
 });
 

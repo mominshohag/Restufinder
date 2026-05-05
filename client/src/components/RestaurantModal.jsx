@@ -87,10 +87,19 @@ export default function RestaurantModal({ restaurant: r, onClose }) {
   // Load menu — also wait for enrichment for OSM restaurants
   useEffect(() => {
     if (!isAlreadyRich && enriched === null) return;
-    if (!website) { setMenuItems([]); return; }
+
+    // Resolve the Google Places ID: direct for google-source restaurants, or from enrichment
+    const placeId = isAlreadyRich ? r.id : (enriched?.id || null);
+
+    // Need at least a placeId or a website to fetch anything
+    if (!placeId && !website) { setMenuItems([]); return; }
+
+    const params = new URLSearchParams();
+    if (placeId) params.set('placeId', placeId);
+    if (website) params.set('website', encodeURIComponent(website));
 
     let cancelled = false;
-    fetch(`${API_BASE}/restaurants/${encodeURIComponent(r.id)}/menu?website=${encodeURIComponent(website)}`)
+    fetch(`${API_BASE}/restaurants/${encodeURIComponent(r.id)}/menu?${params}`)
       .then((res) => res.json())
       .then((data) => { if (!cancelled) setMenuItems(data.items || []); })
       .catch(() => { if (!cancelled) setMenuItems([]); });
@@ -290,28 +299,55 @@ export default function RestaurantModal({ restaurant: r, onClose }) {
 
           {/* ── Menu ── */}
           {tab === 'menu' && (
-            <div className="p-5">
-              {menuItems === null && <Skeleton lines={5} />}
+            <div className="p-4">
+              {menuItems === null && (
+                <div className="grid grid-cols-2 gap-3 animate-pulse">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="bg-gray-100 rounded-2xl aspect-square" />
+                  ))}
+                </div>
+              )}
 
               {menuItems !== null && menuItems.length === 0 && (
                 <div className="text-center py-10">
-                  <p className="text-3xl mb-3">📋</p>
-                  <p className="text-gray-600 font-medium mb-1">Menu not available</p>
+                  <p className="text-3xl mb-3">📷</p>
+                  <p className="text-gray-600 font-medium mb-1">No menu photos available</p>
                   <p className="text-gray-400 text-sm mb-4 max-w-xs mx-auto">
-                    {!website
-                      ? 'No website found for this restaurant. Menu scraping requires a website link, which Google Places can provide.'
-                      : "We couldn't extract a structured menu from their website. The menu may be image-based or in a format we can't read."}
+                    Photos uploaded to Google Maps for this restaurant are not available yet.
                   </p>
                   {website && (
                     <a href={website} target="_blank" rel="noopener noreferrer"
                        className="inline-block px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 transition-colors">
-                      View their website →
+                      Visit their website →
                     </a>
                   )}
                 </div>
               )}
 
-              {menuItems !== null && menuItems.length > 0 && (
+              {/* Google Places photo gallery */}
+              {menuItems !== null && menuItems.length > 0 && menuItems[0].isPhoto && (
+                <div>
+                  <p className="text-xs text-gray-400 mb-3 px-1">
+                    📷 {menuItems.length} photos from Google Maps — tap to enlarge
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {menuItems.map((item, i) => (
+                      <a key={i} href={item.image} target="_blank" rel="noopener noreferrer"
+                         className="block rounded-xl overflow-hidden aspect-square bg-gray-100 hover:opacity-90 transition-opacity">
+                        <img
+                          src={item.image}
+                          alt={`Photo ${i + 1}`}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Text-based menu items (website scraping fallback) */}
+              {menuItems !== null && menuItems.length > 0 && !menuItems[0].isPhoto && (
                 <div className="space-y-3">
                   <p className="text-xs text-gray-400 mb-3">Scraped from restaurant website — may not be fully up to date.</p>
                   {menuItems.map((item, i) => (
