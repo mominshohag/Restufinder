@@ -1,5 +1,6 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
+const visionService = require('./visionService');
 
 const HTTP_OPTS = {
   timeout: 8000,
@@ -103,7 +104,41 @@ async function findDiscountsOnWebsite(websiteUrl) {
     } catch { /* unreachable */ }
   }
 
-  return dedup(allDeals, seen);
+  const textDeals = dedup(allDeals, seen);
+
+  // 3. Run Claude Vision on every promo image found — catches offers that are
+  //    image-only (banners, poster graphics with no readable HTML text)
+  if (visionService.isAvailable()) {
+    const imageUrls = [...new Set(textDeals.map((d) => d.imageUrl).filter(Boolean))].slice(0, 6);
+    const visionResults = await Promise.all(
+      imageUrls.map(async (imgUrl) => {
+        const offerText = await visionService.detectOfferInImage(imgUrl).catch(() => null);
+        if (!offerText) return null;
+        const existing = textDeals.find((d) => d.imageUrl === imgUrl);
+        return {
+          description: offerText + (existing?.description ? `\n\n${existing.description}` : ''),
+          imageUrl: imgUrl,
+          url: existing?.url || websiteUrl,
+          confidence: 'high',
+          source: 'website',
+          detectedBy: 'vision',
+        };
+      })
+    );
+
+    const visionDeals = visionResults.filter(Boolean);
+    // Merge: replace matching text deals with enriched vision deal; append new ones
+    const merged = textDeals.map((d) => {
+      const v = visionDeals.find((vd) => vd.imageUrl === d.imageUrl);
+      return v || d;
+    });
+    for (const v of visionDeals) {
+      if (!merged.find((d) => d.imageUrl === v.imageUrl)) merged.push(v);
+    }
+    return merged;
+  }
+
+  return textDeals;
 }
 
 async function scrapePage(url, pageUrl) {
