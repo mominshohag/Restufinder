@@ -1,6 +1,7 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import RestaurantCard from './RestaurantCard';
 import LOCATIONS from '../data/locations.js';
+import { API_BASE } from '../config.js';
 
 const RADIUS_OPTIONS = [
   { label: '500m', value: 500 },
@@ -18,8 +19,12 @@ export default function RestaurantList({
   const [query, setQuery] = useState('');
   const [sortBy, setSortBy] = useState('rating');
   const [filterOpen, setFilterOpen] = useState(false);
+  const [filterDeals, setFilterDeals] = useState(false);
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
+
+  // Shared deal status: restaurantId → 'checking' | 'found' | 'none'
+  const [dealStatuses, setDealStatuses] = useState({});
 
   // Location changer state
   const [showLocationChanger, setShowLocationChanger] = useState(false);
@@ -27,7 +32,35 @@ export default function RestaurantList({
   const [newArea, setNewArea] = useState('');
 
   // Reset to page 1 whenever filters/search change
-  useEffect(() => setPage(1), [query, sortBy, filterOpen, radius]);
+  useEffect(() => setPage(1), [query, sortBy, filterOpen, filterDeals, radius]);
+
+  // Fetch deal status for one restaurant after a staggered delay
+  const checkDeal = useCallback(async (r, delay) => {
+    if (!r.website && !r.facebookPage) {
+      setDealStatuses((prev) => ({ ...prev, [r.id]: 'none' }));
+      return;
+    }
+    await new Promise((res) => setTimeout(res, delay));
+    setDealStatuses((prev) => ({ ...prev, [r.id]: 'checking' }));
+    try {
+      const params = new URLSearchParams({ restaurantName: r.name });
+      if (r.website) params.set('website', r.website);
+      if (r.facebookPage) params.set('facebookPage', r.facebookPage);
+      const res = await fetch(`${API_BASE}/restaurants/${encodeURIComponent(r.id)}/discounts?${params}`);
+      if (!res.ok) throw new Error('bad response');
+      const data = await res.json();
+      setDealStatuses((prev) => ({ ...prev, [r.id]: (data.discounts || []).length > 0 ? 'found' : 'none' }));
+    } catch {
+      setDealStatuses((prev) => ({ ...prev, [r.id]: 'none' }));
+    }
+  }, []);
+
+  // Kick off deal checks for all restaurants whenever the list changes
+  useEffect(() => {
+    if (restaurants.length === 0) return;
+    setDealStatuses({});
+    restaurants.forEach((r, i) => checkDeal(r, i * 600));
+  }, [restaurants]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = useMemo(() => {
     let list = restaurants;
@@ -49,6 +82,10 @@ export default function RestaurantList({
       list = list.filter((r) => r.isOpen === true);
     }
 
+    if (filterDeals) {
+      list = list.filter((r) => dealStatuses[r.id] === 'found');
+    }
+
     if (sortBy === 'distance') {
       list = [...list].sort((a, b) => haversine(location, a.location) - haversine(location, b.location));
     } else {
@@ -56,10 +93,13 @@ export default function RestaurantList({
     }
 
     return list;
-  }, [restaurants, query, sortBy, filterOpen, location]);
+  }, [restaurants, query, sortBy, filterOpen, filterDeals, dealStatuses, location]);
 
   const totalPages = Math.ceil(filtered.length / perPage);
   const paginated = filtered.slice((page - 1) * perPage, page * perPage);
+
+  const dealsFoundCount = Object.values(dealStatuses).filter((s) => s === 'found').length;
+  const dealsCheckingCount = Object.values(dealStatuses).filter((s) => s === 'checking').length;
 
   const handleLocationSubmit = (e) => {
     e.preventDefault();
@@ -120,6 +160,32 @@ export default function RestaurantList({
         </form>
       )}
 
+      {/* Active Deals filter banner */}
+      <button
+        onClick={() => setFilterDeals((v) => !v)}
+        className={`w-full mb-4 flex items-center justify-between px-4 py-3 rounded-xl border text-sm font-medium transition-all shadow-sm ${
+          filterDeals
+            ? 'bg-orange-500 text-white border-orange-500'
+            : 'bg-white text-gray-700 border-gray-200 hover:border-orange-300 hover:text-orange-600'
+        }`}
+      >
+        <span className="flex items-center gap-2">
+          <span className="text-base">🏷️</span>
+          <span>{filterDeals ? 'Showing restaurants with active deals' : 'Filter: Active Deals'}</span>
+          {dealsFoundCount > 0 && (
+            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${filterDeals ? 'bg-white/20 text-white' : 'bg-orange-100 text-orange-600'}`}>
+              {dealsFoundCount} found
+            </span>
+          )}
+        </span>
+        {dealsCheckingCount > 0 && !filterDeals && (
+          <span className="text-xs text-gray-400">checking {dealsCheckingCount}…</span>
+        )}
+        {filterDeals && (
+          <span className="text-xs opacity-75">Tap to clear ✕</span>
+        )}
+      </button>
+
       {/* Search + controls */}
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="relative flex-1">
@@ -171,18 +237,36 @@ export default function RestaurantList({
       <p className="text-xs text-gray-400 mb-4">
         Showing {Math.min((page - 1) * perPage + 1, filtered.length)}–{Math.min(page * perPage, filtered.length)} of {filtered.length} restaurants
         {query ? ` for "${query}"` : ''}
+        {filterDeals ? ' with active deals' : ''}
       </p>
 
       {filtered.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
-          No results match your filters.{' '}
-          <button className="underline text-orange-500" onClick={() => { setQuery(''); setFilterOpen(false); }}>Clear filters</button>
+          {filterDeals && dealsCheckingCount > 0 ? (
+            <p>Still scanning {dealsCheckingCount} restaurants for deals…</p>
+          ) : filterDeals ? (
+            <>
+              <p className="mb-2">No active deals found in the current area.</p>
+              <button className="underline text-orange-500" onClick={() => setFilterDeals(false)}>Show all restaurants</button>
+            </>
+          ) : (
+            <>
+              No results match your filters.{' '}
+              <button className="underline text-orange-500" onClick={() => { setQuery(''); setFilterOpen(false); setFilterDeals(false); }}>Clear filters</button>
+            </>
+          )}
         </div>
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-6">
             {paginated.map((r, i) => (
-              <RestaurantCard key={r.id} restaurant={r} userLocation={location} index={(page - 1) * perPage + i} />
+              <RestaurantCard
+                key={r.id}
+                restaurant={r}
+                userLocation={location}
+                index={(page - 1) * perPage + i}
+                discountStatus={dealStatuses[r.id] ?? null}
+              />
             ))}
           </div>
 

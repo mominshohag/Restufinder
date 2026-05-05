@@ -1,8 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { getCuisineStyle } from '../services/cuisineStyle.js';
 import { getOpenStatus } from '../services/openingHoursParser.js';
 import RestaurantModal from './RestaurantModal.jsx';
-import { API_BASE } from '../config.js';
 
 const PRICE = { 1: '$', 2: '$$', 3: '$$$', 4: '$$$$' };
 
@@ -30,9 +29,8 @@ function haversine(from, to) {
   return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-export default function RestaurantCard({ restaurant: r, userLocation, index = 0 }) {
+export default function RestaurantCard({ restaurant: r, userLocation, index = 0, discountStatus = null }) {
   const [modalOpen, setModalOpen] = useState(false);
-  const [discountStatus, setDiscountStatus] = useState(null); // null | 'checking' | 'found' | 'none'
 
   const style = getCuisineStyle(r.cuisineTypes || []);
   // Google Places returns openingHours as a string[] (weekday_text) — use isOpen directly.
@@ -42,26 +40,6 @@ export default function RestaurantCard({ restaurant: r, userLocation, index = 0 
     : getOpenStatus(r.openingHours);
   const dist = haversine(userLocation, r.location);
   const distText = dist == null ? null : dist < 1000 ? `${Math.round(dist)}m` : `${(dist / 1000).toFixed(1)}km`;
-
-  // Lazily check for discounts — stagger by card index so we don't hammer the server
-  useEffect(() => {
-    if (!r.website || discountStatus) return;
-    const delay = index * 600;
-    const t = setTimeout(async () => {
-      setDiscountStatus('checking');
-      try {
-        const params = new URLSearchParams({ restaurantName: r.name });
-        if (r.website) params.set('website', r.website);
-        const res = await fetch(`${API_BASE}/restaurants/${encodeURIComponent(r.id)}/discounts?${params}`);
-        if (!res.ok) { setDiscountStatus('none'); return; }
-        const data = await res.json();
-        setDiscountStatus((data.discounts || []).length > 0 ? 'found' : 'none');
-      } catch {
-        setDiscountStatus('none');
-      }
-    }, delay);
-    return () => clearTimeout(t);
-  }, [r.id, r.website, index]);
 
   return (
     <>

@@ -175,7 +175,7 @@ function RestuFinderApp() {
 
       <footer className="text-center text-xs text-gray-400 py-4 border-t border-gray-100">
         RestuFinder
-        <span className="ml-2 text-gray-300">v2.2</span>
+        <span className="ml-2 text-gray-300">v2.3</span>
       </footer>
     </div>
   );
