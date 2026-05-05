@@ -40,18 +40,29 @@ router.get('/restaurants', async (req, res) => {
 });
 
 // Google Places enrichment — must be defined BEFORE /:id routes
+// Accepts ?placeId=... (Google restaurants) OR ?name=&lat=&lng= (OSM restaurants)
 router.get('/restaurants/enrich', async (req, res) => {
-  const { name, lat, lng } = req.query;
-  if (!name || !lat || !lng) return res.status(400).json({ error: 'name, lat, lng required' });
+  const { name, lat, lng, placeId } = req.query;
+  if (!placeId && (!name || !lat || !lng)) {
+    return res.status(400).json({ error: 'placeId or (name, lat, lng) required' });
+  }
 
-  const cacheKey = `enrich_${name}_${parseFloat(lat).toFixed(3)}_${parseFloat(lng).toFixed(3)}`;
+  const cacheKey = placeId
+    ? `enrich_pid_${placeId}`
+    : `enrich_${name}_${parseFloat(lat).toFixed(3)}_${parseFloat(lng).toFixed(3)}`;
+
   const cached = enrichCache.get(cacheKey);
   if (cached !== undefined) return res.json(cached);
 
   try {
-    const details = await placesService.enrichRestaurant(name, parseFloat(lat), parseFloat(lng));
-    enrichCache.set(cacheKey, details);
-    res.json(details);
+    const details = await placesService.enrichRestaurant(
+      name || '',
+      lat ? parseFloat(lat) : 0,
+      lng ? parseFloat(lng) : 0,
+      placeId || null,
+    );
+    enrichCache.set(cacheKey, details || {});
+    res.json(details || {});
   } catch (err) {
     console.error('Enrich error:', err.message);
     res.status(500).json({ error: 'Enrichment failed.' });

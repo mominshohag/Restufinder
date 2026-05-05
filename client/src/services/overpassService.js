@@ -11,17 +11,14 @@ const MIRRORS = [
 const PRICE_MAP = { '$': 1, '$$': 2, '$$$': 3, '$$$$': 4 };
 
 export async function getNearbyRestaurants(lat, lng, radius = 2000) {
+  // Use out center to avoid fetching full way geometry; faster response.
   const query = `
-    [out:json][timeout:25];
+    [out:json][timeout:20];
     (
-      node["amenity"="restaurant"](around:${radius},${lat},${lng});
-      node["amenity"="cafe"](around:${radius},${lat},${lng});
-      node["amenity"="fast_food"](around:${radius},${lat},${lng});
-      way["amenity"="restaurant"](around:${radius},${lat},${lng});
+      node["amenity"~"restaurant|fast_food|cafe"](around:${radius},${lat},${lng});
+      way["amenity"~"restaurant|fast_food"](around:${radius},${lat},${lng});
     );
-    out body;
-    >;
-    out skel qt;
+    out center tags qt;
   `;
 
   let lastError;

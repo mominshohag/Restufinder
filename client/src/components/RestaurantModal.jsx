@@ -42,8 +42,9 @@ export default function RestaurantModal({ restaurant: r, onClose }) {
 
   const style = getCuisineStyle(r.cuisineTypes || []);
 
-  // If restaurant already came from Google Places, use its data directly
-  const isAlreadyRich = r.source === 'google';
+  // isAlreadyRich = we have full details already (website, phone, hours).
+  // Google nearbysearch results have needsDetails:true — they still need enrichment.
+  const isAlreadyRich = r.source === 'google' && !r.needsDetails;
   const photo = r.photoUrl || enriched?.photoUrl;
   const rating = r.rating || enriched?.rating;
   const reviewCount = r.reviewCount || enriched?.reviewCount;
@@ -88,8 +89,8 @@ export default function RestaurantModal({ restaurant: r, onClose }) {
   useEffect(() => {
     if (!isAlreadyRich && enriched === null) return;
 
-    // Resolve the Google Places ID: direct for google-source restaurants, or from enrichment
-    const placeId = isAlreadyRich ? r.id : (enriched?.id || null);
+    // Google restaurants always have their placeId as r.id; OSM uses enriched.id
+    const placeId = r.source === 'google' ? r.id : (enriched?.id || null);
 
     // Need at least a placeId or a website to fetch anything
     if (!placeId && !website) { setMenuItems([]); return; }
@@ -106,14 +107,27 @@ export default function RestaurantModal({ restaurant: r, onClose }) {
     return () => { cancelled = true; };
   }, [r.id, isAlreadyRich, enriched, website]);
 
-  // Enrich with Google Places only if data source is OSM (sparse)
+  // Fetch full details when needed:
+  //  - Google restaurant with needsDetails:true → use placeId directly (fast)
+  //  - OSM restaurant → text search by name + location
   useEffect(() => {
-    if (isAlreadyRich || !r.location) return;
-    fetch(`${API_BASE}/restaurants/enrich?name=${encodeURIComponent(r.name)}&lat=${r.location.lat}&lng=${r.location.lng}`)
+    if (isAlreadyRich) return;
+
+    let url;
+    if (r.source === 'google' && r.needsDetails) {
+      url = `${API_BASE}/restaurants/enrich?placeId=${encodeURIComponent(r.id)}`;
+    } else if (r.location) {
+      url = `${API_BASE}/restaurants/enrich?name=${encodeURIComponent(r.name)}&lat=${r.location.lat}&lng=${r.location.lng}`;
+    } else {
+      setEnriched({});
+      return;
+    }
+
+    fetch(url)
       .then((res) => res.ok ? res.json() : null)
-      .then((data) => { if (data) setEnriched(data); })
-      .catch(() => {});
-  }, [r, isAlreadyRich]);
+      .then((data) => setEnriched(data && Object.keys(data).length ? data : {}))
+      .catch(() => setEnriched({}));
+  }, [r.id, r.source, r.needsDetails, isAlreadyRich]);
 
   const discountCount = discounts?.length ?? 0;
 
