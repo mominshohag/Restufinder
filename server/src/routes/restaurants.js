@@ -4,6 +4,7 @@ const NodeCache = require('node-cache');
 const placesService = require('../services/placesService');
 const discountService = require('../services/discountService');
 const menuService = require('../services/menuService');
+const scraperService = require('../services/scraperService');
 
 const restaurantCache = new NodeCache({ stdTTL: 600 });
 const discountCache = new NodeCache({ stdTTL: 1800 });
@@ -72,7 +73,7 @@ router.get('/restaurants/enrich', async (req, res) => {
 // Discounts
 router.get('/restaurants/:id/discounts', async (req, res) => {
   const { id } = req.params;
-  const { website, facebookPage, restaurantName } = req.query;
+  const { website, facebookPage, restaurantName, placeId } = req.query;
 
   // Include website/fb in cache key so enriched calls get their own entry
   const cacheKey = `discounts_${id}_${website || ''}_${facebookPage || ''}`;
@@ -80,9 +81,31 @@ router.get('/restaurants/:id/discounts', async (req, res) => {
   if (cached) return res.json({ discounts: cached });
 
   try {
+    let resolvedWebsite = website || null;
+    let resolvedFbPage = facebookPage || null;
+
+    // If no website was passed but we have a placeId, auto-enrich to get it.
+    // Re-uses the enrichCache so this is free on repeat calls.
+    if (!resolvedWebsite && placeId) {
+      const enrichCacheKey = `enrich_pid_${placeId}`;
+      let details = enrichCache.get(enrichCacheKey);
+      if (details === undefined) {
+        details = await placesService.enrichRestaurant('', 0, 0, placeId).catch(() => null);
+        enrichCache.set(enrichCacheKey, details || {});
+      }
+      resolvedWebsite = details?.website || null;
+      if (!resolvedFbPage) resolvedFbPage = details?.facebookPage || null;
+    }
+
+    // If still no website, try scraping social links from the website
+    if (resolvedWebsite && !resolvedFbPage) {
+      const links = await scraperService.extractSocialMediaLinks(resolvedWebsite).catch(() => ({}));
+      resolvedFbPage = links.facebookPage || null;
+    }
+
     const discounts = await discountService.getDiscounts({
-      website: website || null,
-      facebookPage: facebookPage || null,
+      website: resolvedWebsite,
+      facebookPage: resolvedFbPage,
       restaurantName: restaurantName || null,
     });
     discountCache.set(cacheKey, discounts);

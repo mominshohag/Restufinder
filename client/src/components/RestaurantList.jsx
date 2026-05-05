@@ -36,16 +36,15 @@ export default function RestaurantList({
 
   // Fetch deal status for one restaurant after a staggered delay
   const checkDeal = useCallback(async (r, delay) => {
-    if (!r.website && !r.facebookPage) {
-      setDealStatuses((prev) => ({ ...prev, [r.id]: 'none' }));
-      return;
-    }
     await new Promise((res) => setTimeout(res, delay));
     setDealStatuses((prev) => ({ ...prev, [r.id]: 'checking' }));
     try {
       const params = new URLSearchParams({ restaurantName: r.name });
       if (r.website) params.set('website', r.website);
       if (r.facebookPage) params.set('facebookPage', r.facebookPage);
+      // For Google Places restaurants, pass placeId so the server can enrich
+      // (fetch the website URL) before scraping for deals
+      if (r.source === 'google') params.set('placeId', r.id);
       const res = await fetch(`${API_BASE}/restaurants/${encodeURIComponent(r.id)}/discounts?${params}`);
       if (!res.ok) throw new Error('bad response');
       const data = await res.json();
