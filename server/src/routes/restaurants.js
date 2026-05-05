@@ -103,17 +103,14 @@ router.get('/restaurants/:id/menu', async (req, res) => {
   if (cached) return res.json({ items: cached });
 
   try {
-    let items = [];
+    // Fetch Google Map photos and website text items in parallel
+    const [photos, textItems] = await Promise.all([
+      placeId ? menuService.getPhotosFromPlaces(placeId) : Promise.resolve([]),
+      website ? menuService.scrapeMenu(website) : Promise.resolve([]),
+    ]);
 
-    // 1. Google Places photos (best source — real menu/food photos)
-    if (placeId) {
-      items = await menuService.getPhotosFromPlaces(placeId);
-    }
-
-    // 2. Fall back to website scraping if no photos found
-    if (items.length === 0 && website) {
-      items = await menuService.scrapeMenu(website);
-    }
+    // Photos first (visual), then named text items
+    const items = [...photos, ...textItems];
 
     menuCache.set(cacheKey, items);
     res.json({ items });

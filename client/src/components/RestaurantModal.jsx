@@ -304,91 +304,116 @@ export default function RestaurantModal({ restaurant: r, onClose }) {
               {/* No data state */}
               {!phone && !website && !openingHours && !r.address && enriched !== null && (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
-                  <strong>Limited information available.</strong> This restaurant has minimal public data on OpenStreetMap and wasn't found on Google Places.
-                  {!isAlreadyRich && <span> Adding a <strong>Google Places API key</strong> on Render improves coverage significantly.</span>}
+                  <strong>Limited information available.</strong> This restaurant has minimal public data and no additional details could be found.
                 </div>
               )}
             </div>
           )}
 
           {/* ── Menu ── */}
-          {tab === 'menu' && (
-            <div className="p-4">
-              {menuItems === null && (
-                <div className="grid grid-cols-2 gap-3 animate-pulse">
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <div key={i} className="bg-gray-100 rounded-2xl aspect-square" />
-                  ))}
-                </div>
-              )}
+          {tab === 'menu' && (() => {
+            const photos    = (menuItems || []).filter((m) => m.isPhoto);
+            const textItems = (menuItems || []).filter((m) => !m.isPhoto);
+            const hasContent = photos.length > 0 || textItems.length > 0;
 
-              {menuItems !== null && menuItems.length === 0 && (
-                <div className="text-center py-10">
-                  <p className="text-3xl mb-3">📷</p>
-                  <p className="text-gray-600 font-medium mb-1">No menu photos available</p>
-                  <p className="text-gray-400 text-sm mb-4 max-w-xs mx-auto">
-                    Photos uploaded to Google Maps for this restaurant are not available yet.
-                  </p>
-                  {website && (
-                    <a href={website} target="_blank" rel="noopener noreferrer"
-                       className="inline-block px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 transition-colors">
-                      Visit their website →
-                    </a>
-                  )}
-                </div>
-              )}
-
-              {/* Google Places photo gallery */}
-              {menuItems !== null && menuItems.length > 0 && menuItems[0].isPhoto && (
-                <div>
-                  <p className="text-xs text-gray-400 mb-3 px-1">
-                    📷 {menuItems.length} photos from Google Maps — tap to enlarge
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {menuItems.map((item, i) => (
-                      <a key={i} href={item.image} target="_blank" rel="noopener noreferrer"
-                         className="block rounded-xl overflow-hidden aspect-square bg-gray-100 hover:opacity-90 transition-opacity">
-                        <img
-                          src={item.image}
-                          alt={`Photo ${i + 1}`}
-                          className="w-full h-full object-cover"
-                          loading="lazy"
-                        />
-                      </a>
+            return (
+              <div>
+                {/* Loading skeleton */}
+                {menuItems === null && (
+                  <div className="p-4 grid grid-cols-2 gap-3 animate-pulse">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <div key={i} className="bg-gray-100 rounded-2xl aspect-square" />
                     ))}
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Text-based menu items (website scraping fallback) */}
-              {menuItems !== null && menuItems.length > 0 && !menuItems[0].isPhoto && (
-                <div className="space-y-3">
-                  <p className="text-xs text-gray-400 mb-3">Scraped from restaurant website — may not be fully up to date.</p>
-                  {menuItems.map((item, i) => (
-                    <div key={i} className="flex items-start justify-between gap-3 py-3 border-b border-gray-50 last:border-0">
-                      <div className="flex items-start gap-3 flex-1 min-w-0">
-                        {item.image ? (
-                          <img src={item.image} alt={item.name} className="w-14 h-14 rounded-lg object-cover shrink-0" loading="lazy" />
-                        ) : (
-                          <div className={`w-14 h-14 rounded-lg bg-gradient-to-br ${style.gradient} flex items-center justify-center shrink-0`}>
-                            <span className="text-2xl opacity-70">{style.emoji}</span>
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-gray-800 text-sm leading-tight">{item.name}</p>
-                          {item.category && <p className="text-xs text-orange-500 mt-0.5">{item.category}</p>}
-                          {item.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{item.description}</p>}
-                        </div>
-                      </div>
-                      {item.price && (
-                        <span className="text-sm font-bold text-gray-800 shrink-0 whitespace-nowrap">{item.price}</span>
-                      )}
+                {/* Empty state */}
+                {menuItems !== null && !hasContent && (
+                  <div className="text-center py-12 px-6">
+                    <p className="text-4xl mb-3">📋</p>
+                    <p className="text-gray-700 font-semibold mb-1">Menu not available</p>
+                    <p className="text-gray-400 text-sm max-w-xs mx-auto mb-5">
+                      No photos or menu data found for this restaurant yet.
+                    </p>
+                    {website && (
+                      <a href={website} target="_blank" rel="noopener noreferrer"
+                         className="inline-block px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600">
+                        Visit their website →
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                {/* ── Food & Menu Photos (Google Maps) ── */}
+                {photos.length > 0 && (
+                  <div className="px-4 pt-4 pb-2">
+                    <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+                      Food &amp; Menu Photos · {photos.length} from Google Maps
+                    </h4>
+                    <div className="grid grid-cols-2 gap-2">
+                      {photos.map((item, i) => (
+                        <a
+                          key={i}
+                          href={item.image}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block rounded-xl overflow-hidden bg-gray-100 hover:opacity-90 transition-opacity group relative"
+                          style={{ aspectRatio: '1 / 1' }}
+                        >
+                          <img
+                            src={item.image}
+                            alt={`Food photo ${i + 1}`}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            loading="lazy"
+                          />
+                          {/* Contributor attribution at bottom of card */}
+                          {item.contributor && (
+                            <span className="absolute bottom-0 left-0 right-0 bg-black/40 text-white text-[10px] px-2 py-1 truncate backdrop-blur-sm">
+                              {item.contributor}
+                            </span>
+                          )}
+                        </a>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+                  </div>
+                )}
+
+                {/* ── Named Menu Items (from website) ── */}
+                {textItems.length > 0 && (
+                  <div className="px-4 pt-4 pb-4">
+                    <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+                      Menu Items
+                    </h4>
+                    <div className="space-y-1">
+                      {textItems.map((item, i) => (
+                        <div key={i} className="flex items-start gap-3 py-3 border-b border-gray-50 last:border-0">
+                          {item.image ? (
+                            <img src={item.image} alt={item.name} className="w-14 h-14 rounded-lg object-cover shrink-0" loading="lazy" />
+                          ) : (
+                            <div className={`w-14 h-14 rounded-lg bg-gradient-to-br ${style.gradient} flex items-center justify-center shrink-0`}>
+                              <span className="text-xl opacity-70">{style.emoji}</span>
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-gray-800 text-sm leading-tight">{item.name}</p>
+                            {item.category && (
+                              <p className="text-xs text-orange-500 mt-0.5 capitalize">{item.category}</p>
+                            )}
+                            {item.description && (
+                              <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{item.description}</p>
+                            )}
+                          </div>
+                          {item.price && (
+                            <span className="text-sm font-bold text-gray-800 shrink-0 whitespace-nowrap">{item.price}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* ── Deals ── */}
           {tab === 'deals' && (

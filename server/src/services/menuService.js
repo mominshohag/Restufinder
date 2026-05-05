@@ -40,14 +40,32 @@ async function getPhotosFromPlaces(placeId) {
 
     if (data.status !== 'OK' || !data.result?.photos?.length) return [];
 
-    return data.result.photos.slice(0, 15).map((ph, i) => ({
-      name: `Photo ${i + 1}`,
-      description: null,
-      price: null,
-      category: 'Google Photos',
-      image: `${PLACES_BASE}/photo?maxwidth=800&photoreference=${ph.photo_reference}&key=${API_KEY}`,
-      isPhoto: true,
-    }));
+    const all = data.result.photos;
+
+    // Heuristic: very wide landscape photos (ratio > 1.8) are usually exterior/street
+    // shots. Keep the rest — square and portrait are almost always food/menu photos.
+    const foodLikely = all.filter((ph) => {
+      if (!ph.width || !ph.height) return true;
+      return ph.width / ph.height <= 1.8;
+    });
+
+    // Use filtered set; fall back to all photos if filtering leaves nothing
+    const source = foodLikely.length > 0 ? foodLikely : all;
+
+    return source.slice(0, 20).map((ph) => {
+      // Strip HTML tags from attribution to get contributor name
+      const rawAttr = ph.html_attributions?.[0] || '';
+      const contributor = rawAttr.replace(/<[^>]+>/g, '').trim();
+      return {
+        name: null,           // no item name available from the photo API
+        contributor,          // "Uploaded by: John Doe" shown as subtle caption
+        description: null,
+        price: null,
+        category: 'mapPhoto',
+        image: `${PLACES_BASE}/photo?maxwidth=800&photoreference=${ph.photo_reference}&key=${API_KEY}`,
+        isPhoto: true,
+      };
+    });
   } catch {
     return [];
   }

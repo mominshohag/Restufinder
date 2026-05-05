@@ -122,16 +122,6 @@ function RestuFinderApp() {
               {location.label && (
                 <span className="text-gray-700 font-medium hidden sm:inline">📍 {location.label}</span>
               )}
-              {dataSource === 'google' && (
-                <span className="bg-green-50 text-green-700 text-xs px-2 py-0.5 rounded-full border border-green-200 hidden sm:inline">
-                  Google Places
-                </span>
-              )}
-              {dataSource === 'openstreetmap' && (
-                <span className="bg-amber-50 text-amber-700 text-xs px-2 py-0.5 rounded-full border border-amber-200 hidden sm:inline">
-                  OpenStreetMap
-                </span>
-              )}
               <button
                 onClick={() => { setLocation(null); setRestaurants([]); setError(null); setDataSource(''); }}
                 className="text-xs text-orange-500 hover:text-orange-700 underline"
@@ -167,8 +157,7 @@ function RestuFinderApp() {
           <>
             {dataSource === 'openstreetmap' && (
               <div className="mb-5 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
-                <strong>Limited data mode</strong> — OpenStreetMap has sparse data for Bangladesh (names only).
-                Add a <strong>Google Places API key</strong> on Render to unlock photos, ratings, hours, menus and discounts.
+                <strong>Limited data mode</strong> — showing basic restaurant names only. Photos, ratings, menus and deals require an API key configured on the server.
               </div>
             )}
             <RestaurantList
@@ -185,8 +174,8 @@ function RestuFinderApp() {
       </main>
 
       <footer className="text-center text-xs text-gray-400 py-4 border-t border-gray-100">
-        RestuFinder · {dataSource === 'google' ? 'Google Places' : 'OpenStreetMap'}
-        <span className="ml-2 text-gray-300">v2.1</span>
+        RestuFinder
+        <span className="ml-2 text-gray-300">v2.2</span>
       </footer>
     </div>
   );
