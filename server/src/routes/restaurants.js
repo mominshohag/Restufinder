@@ -15,7 +15,6 @@ router.get('/config', (_req, res) => {
   res.json({
     hasGooglePlaces: !!process.env.GOOGLE_PLACES_API_KEY,
     hasFacebook: !!(process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET),
-    hasVision: !!process.env.ANTHROPIC_API_KEY,
   });
 });
 

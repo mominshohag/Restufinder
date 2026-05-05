@@ -1,6 +1,6 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
-const visionService = require('./visionService');
+const ocrService = require('./ocrService');
 
 const APP_ID = process.env.FACEBOOK_APP_ID;
 const APP_SECRET = process.env.FACEBOOK_APP_SECRET;
@@ -145,40 +145,38 @@ async function scrapePublicPage(facebookPageUrl) {
   }
 }
 
-// ── Deal extraction — caption keywords + Claude Vision ────────────────────────
+// ── Deal extraction — caption keywords + free Tesseract OCR on images ────────
 
 async function buildDeals(posts) {
   const deals = [];
 
-  // Run vision analysis in parallel (max 10 posts to keep latency reasonable)
+  // Process up to 10 posts; OCR runs in parallel across all images
   const targets = posts.slice(0, 10);
 
   const analysed = await Promise.all(
     targets.map(async (post) => {
-      const captionHasDeal = captionMatchesDeal(post.caption);
-
-      // Always run vision if image exists (offers are often image-only)
-      let visionDescription = null;
+      // Free Tesseract OCR — reads text printed inside the promotional image
+      let imageText = null;
       if (post.imageUrl) {
-        visionDescription = await visionService.detectOfferInImage(post.imageUrl).catch(() => null);
+        imageText = await ocrService.extractTextFromImage(post.imageUrl).catch(() => null);
       }
 
-      const isDeal = captionHasDeal || !!visionDescription;
-      if (!isDeal) return null;
+      // Match keywords against caption AND text extracted from the image
+      const combinedText = [post.caption, imageText].filter(Boolean).join(' ');
+      if (!captionMatchesDeal(combinedText)) return null;
 
-      // Prefer vision description (more precise) but fall back to caption
-      const description = visionDescription
-        ? visionDescription + (post.caption ? `\n\n${post.caption}` : '')
-        : post.caption;
+      // Caption is the primary human-readable description; if caption is empty
+      // (image-only post), use the OCR-extracted text
+      const description = post.caption || imageText || '';
+      if (!description) return null;
 
       return {
         description,
         imageUrl: post.imageUrl,
         postedAt: post.postedAt,
         url: post.url,
-        confidence: visionDescription ? 'high' : 'medium',
+        confidence: 'high',
         source: 'facebook',
-        detectedBy: visionDescription ? 'vision+caption' : 'caption',
       };
     })
   );

@@ -1,6 +1,6 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
-const visionService = require('./visionService');
+const ocrService = require('./ocrService');
 
 const HTTP_OPTS = {
   timeout: 8000,
@@ -106,34 +106,36 @@ async function findDiscountsOnWebsite(websiteUrl) {
 
   const textDeals = dedup(allDeals, seen);
 
-  // 3. Run Claude Vision on every promo image found — catches offers that are
-  //    image-only (banners, poster graphics with no readable HTML text)
-  if (visionService.isAvailable()) {
-    const imageUrls = [...new Set(textDeals.map((d) => d.imageUrl).filter(Boolean))].slice(0, 6);
-    const visionResults = await Promise.all(
+  // 3. Run free Tesseract OCR on promo images — catches offer text that is
+  //    embedded inside banner images (not present in the page HTML)
+  const imageUrls = [...new Set(textDeals.map((d) => d.imageUrl).filter(Boolean))].slice(0, 5);
+  if (imageUrls.length > 0) {
+    const ocrResults = await Promise.all(
       imageUrls.map(async (imgUrl) => {
-        const offerText = await visionService.detectOfferInImage(imgUrl).catch(() => null);
-        if (!offerText) return null;
+        const ocrText = await ocrService.extractTextFromImage(imgUrl).catch(() => null);
+        if (!ocrText) return null;
+        if (!isValidDeal(ocrText)) return null;
+
         const existing = textDeals.find((d) => d.imageUrl === imgUrl);
         return {
-          description: offerText + (existing?.description ? `\n\n${existing.description}` : ''),
+          description: existing?.description
+            ? existing.description        // already have text — OCR confirmed it
+            : ocrText,                    // image-only deal — OCR is the description
           imageUrl: imgUrl,
           url: existing?.url || websiteUrl,
           confidence: 'high',
           source: 'website',
-          detectedBy: 'vision',
         };
       })
     );
 
-    const visionDeals = visionResults.filter(Boolean);
-    // Merge: replace matching text deals with enriched vision deal; append new ones
+    const ocrDeals = ocrResults.filter(Boolean);
     const merged = textDeals.map((d) => {
-      const v = visionDeals.find((vd) => vd.imageUrl === d.imageUrl);
-      return v || d;
+      const o = ocrDeals.find((od) => od.imageUrl === d.imageUrl);
+      return o || d;
     });
-    for (const v of visionDeals) {
-      if (!merged.find((d) => d.imageUrl === v.imageUrl)) merged.push(v);
+    for (const o of ocrDeals) {
+      if (!merged.find((d) => d.imageUrl === o.imageUrl)) merged.push(o);
     }
     return merged;
   }
