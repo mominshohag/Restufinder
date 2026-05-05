@@ -32,6 +32,9 @@ export default function RestaurantList({
   const filtered = useMemo(() => {
     let list = restaurants;
 
+    // Only show restaurants with 500+ reviews; pass through if no review data (OSM)
+    list = list.filter((r) => r.reviewCount == null || r.reviewCount >= 500);
+
     if (query.trim()) {
       const q = query.toLowerCase();
       list = list.filter(

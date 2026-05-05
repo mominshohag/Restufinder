@@ -42,6 +42,7 @@ async function getFromGooglePlaces(lat, lng, radius) {
 // user opens the modal (via /restaurants/enrich?placeId=...).
 function mapNearbyResult(p) {
   if (!p.place_id) return null;
+  if (p.user_ratings_total != null && p.user_ratings_total < 500) return null;
   const photoRef = p.photos?.[0]?.photo_reference;
   return {
     id: p.place_id,
